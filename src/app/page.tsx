@@ -42,31 +42,36 @@ export default function KoetomoApp() {
     };
   }, []);
 
-const fetchProfile = async (userId: string) => {
-    // .single() をやめて、配列として取得する
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId);
+  // 【修正ポイント】406エラーを回避し、プロフィールがなければその場で作る
+  const fetchProfile = async (userId: string) => {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId);
 
     if (error) {
       console.error("Profile fetch error:", error.message);
       return;
     }
 
-    // データが存在する場合のみ処理する
     if (data && data.length > 0) {
       const userProfile = data[0];
       setProfile(userProfile);
-      
       if (userProfile.peer_id) {
-        console.log("PeerID found, initializing...");
         initPeer(userProfile.peer_id);
-      } else {
-        console.error("PeerID is missing in the database");
       }
     } else {
-      console.log("No profile found for this user.");
+      // プロフィールがない場合に自動作成（準備中です...対策）
+      const newPeerId = Math.random().toString(36).substring(7);
+      const newProfile = { 
+        id: userId, 
+        username: email ? email.split('@')[0] : "ユーザー", 
+        peer_id: newPeerId, 
+        icon: "👤", 
+        gender: "未設定" 
+      };
+      const { error: insErr } = await supabase.from('profiles').insert([newProfile]);
+      if (!insErr) {
+        setProfile(newProfile);
+        initPeer(newPeerId);
+      }
     }
   };
 
@@ -77,7 +82,6 @@ const fetchProfile = async (userId: string) => {
 
   const initPeer = async (fixedId: string) => {
     const { Peer } = await import('peerjs');
-    // 型キャストにより new Peer() の型エラーを回避
     const peer = new (Peer as any)(fixedId) as Peer;
     peerRef.current = peer;
 
@@ -110,7 +114,6 @@ const fetchProfile = async (userId: string) => {
     
     call.on('close', () => endCall());
     
-    // 履歴に追加 (重複チェック付き)
     setCallHistory(prev => {
       if (prev.find(h => h.id === call.peer)) return prev;
       return [...prev, { id: call.peer, name: "通話した相手" }];
@@ -123,18 +126,10 @@ const fetchProfile = async (userId: string) => {
       : await supabase.auth.signInWithPassword({ email, password });
     
     if (error) return alert(error.message);
-    if (type === 'signup' && data.user) {
-      const newPeerId = Math.random().toString(36).substring(7);
-      await supabase.from('profiles').insert([{ 
-        id: data.user.id, 
-        username: email.split('@')[0], 
-        peer_id: newPeerId, 
-        icon: "👤", 
-        gender: "未設定" 
-      }]);
-      alert("登録完了！再度ログインしてください。");
+    if (data.user) {
+      alert(type === 'signup' ? "登録完了！" : "ログイン成功！");
+      location.reload();
     }
-    location.reload();
   };
 
   const postCallRequest = async () => {
@@ -164,7 +159,6 @@ const fetchProfile = async (userId: string) => {
   const endCall = () => {
     localStreamRef.current?.getTracks().forEach(track => track.stop());
     setInCall(false);
-    // 完全にリセットするためリロード（既存ロジックを継承）
     window.location.reload();
   };
 
@@ -172,7 +166,6 @@ const fetchProfile = async (userId: string) => {
     alert(`ID: ${targetId} をフォローしました！ (Supabaseのfollowsテーブルへ保存)`);
   };
 
-  // ログイン前の画面
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-sky-50 p-6">
@@ -189,7 +182,6 @@ const fetchProfile = async (userId: string) => {
     );
   }
 
-  // ログイン後のメイン画面
   return (
     <div className="min-h-screen bg-sky-50 p-4 max-w-md mx-auto pb-24 text-black">
       <header className="flex justify-between items-center mb-6">
