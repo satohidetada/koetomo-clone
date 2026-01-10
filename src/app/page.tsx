@@ -98,10 +98,10 @@ export default function KoetomoApp() {
     });
 
     peer.on('call', async (call: MediaConnection) => {
-      // 【修正箇所】まず着信中であることを視覚的に伝えるために状態をセット
+      // 【重要修正】着信した瞬間にまずUIを「通話中」にして、相手が操作していることを明示する
       setInCall(true); 
 
-      // ブラウザが画面更新を完了してからダイアログを出す
+      // ブラウザのレンダリング時間を確保するために少し待機してダイアログを表示
       setTimeout(async () => {
         if (confirm("着信があります。通話しますか？")) {
           try {
@@ -156,7 +156,8 @@ export default function KoetomoApp() {
       user_id: user.id, 
       name: profile.username, 
       gender: profile.gender, 
-      peer_id: profile.peer_id 
+      peer_id: profile.peer_id,
+      icon: profile.icon // 今回追加したアイコン情報
     }]);
     if (error) alert("募集に失敗しました");
     else alert("募集を投稿しました！");
@@ -203,11 +204,30 @@ export default function KoetomoApp() {
       <div className="min-h-screen flex items-center justify-center bg-sky-50 p-6 text-black">
         <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
           <h1 className="text-2xl font-bold mb-6 text-sky-600 text-center">ひまつぶし通話</h1>
-          <input className="w-full border p-3 mb-3 rounded-lg outline-none focus:border-sky-500" placeholder="メール" onChange={e => setEmail(e.target.value)} />
-          <input className="w-full border p-3 mb-6 rounded-lg outline-none focus:border-sky-500" type="password" placeholder="パスワード" onChange={e => setPassword(e.target.value)} />
+          <input 
+            className="w-full border p-3 mb-3 rounded-lg outline-none focus:border-sky-500" 
+            placeholder="メール" 
+            onChange={e => setEmail(e.target.value)} 
+          />
+          <input 
+            className="w-full border p-3 mb-6 rounded-lg outline-none focus:border-sky-500" 
+            type="password" 
+            placeholder="パスワード" 
+            onChange={e => setPassword(e.target.value)} 
+          />
           <div className="flex gap-2">
-            <button onClick={() => handleAuth('login')} className="flex-1 bg-sky-600 text-white py-3 rounded-lg font-bold hover:bg-sky-700 transition">ログイン</button>
-            <button onClick={() => handleAuth('signup')} className="flex-1 border border-sky-600 text-sky-600 py-3 rounded-lg font-bold hover:bg-sky-50 transition">新規登録</button>
+            <button 
+              onClick={() => handleAuth('login')} 
+              className="flex-1 bg-sky-600 text-white py-3 rounded-lg font-bold hover:bg-sky-700 transition"
+            >
+              ログイン
+            </button>
+            <button 
+              onClick={() => handleAuth('signup')} 
+              className="flex-1 border border-sky-600 text-sky-600 py-3 rounded-lg font-bold hover:bg-sky-50 transition"
+            >
+              新規登録
+            </button>
           </div>
         </div>
       </div>
@@ -224,17 +244,35 @@ export default function KoetomoApp() {
         <div className="bg-white p-6 rounded-2xl shadow-md space-y-6">
           <div>
             <label className="text-xs text-gray-400 block mb-1">アイコン</label>
-            <select className="w-full border-b p-2 text-2xl outline-none" value={profile.icon} onChange={e => setProfile({...profile, icon: e.target.value})}>
+            <select 
+              className="w-full border-b p-2 text-2xl outline-none" 
+              value={profile.icon} 
+              onChange={e => setProfile({...profile, icon: e.target.value})}
+            >
               <option>👤</option><option>🐶</option><option>🐱</option><option>🐰</option><option>🦊</option>
             </select>
           </div>
           <div>
             <label className="text-xs text-gray-400 block mb-1">ユーザー名</label>
-            <input className="w-full border-b p-2 outline-none focus:border-sky-500" value={profile.username} onChange={e => setProfile({...profile, username: e.target.value})} />
+            <input 
+              className="w-full border-b p-2 outline-none focus:border-sky-500" 
+              value={profile.username} 
+              onChange={e => setProfile({...profile, username: e.target.value})} 
+            />
           </div>
-          <button onClick={updateProfile} className="w-full bg-sky-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition">保存する</button>
+          <button 
+            onClick={updateProfile} 
+            className="w-full bg-sky-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition"
+          >
+            保存する
+          </button>
         </div>
-        <button onClick={() => supabase.auth.signOut().then(() => location.reload())} className="w-full mt-12 text-gray-400 text-sm underline hover:text-gray-600">ログアウトする</button>
+        <button 
+          onClick={() => supabase.auth.signOut().then(() => location.reload())} 
+          className="w-full mt-12 text-gray-400 text-sm underline hover:text-gray-600"
+        >
+          ログアウトする
+        </button>
       </div>
     );
   }
@@ -243,7 +281,10 @@ export default function KoetomoApp() {
   return (
     <div className="min-h-screen bg-sky-50 p-4 max-w-md mx-auto pb-24 text-black">
       <header className="flex justify-between items-center mb-6">
-        <div onClick={() => setView('mypage')} className="flex items-center gap-2 bg-white px-3 py-1 rounded-full shadow-sm cursor-pointer hover:bg-gray-50 transition">
+        <div 
+          onClick={() => setView('mypage')} 
+          className="flex items-center gap-2 bg-white px-3 py-1 rounded-full shadow-sm cursor-pointer hover:bg-gray-50 transition"
+        >
           <span className="text-xl">{profile.icon}</span>
           <span className="font-bold text-sky-800">{profile.username}</span>
           <span className="text-[10px] text-gray-400">▼</span>
@@ -253,11 +294,19 @@ export default function KoetomoApp() {
 
       <section className="bg-white p-4 rounded-xl shadow-md mb-6">
         <p className="text-center text-gray-500 text-xs mb-3">誰かと話したいときは</p>
-        <button onClick={postCallRequest} className="w-full bg-sky-500 text-white py-3 rounded-full font-bold shadow-lg hover:bg-sky-600 transition active:scale-95">通話を募集する</button>
+        <button 
+          onClick={postCallRequest} 
+          className="w-full bg-sky-500 text-white py-3 rounded-full font-bold shadow-lg hover:bg-sky-600 transition active:scale-95"
+        >
+          通話を募集する
+        </button>
       </section>
 
       <h3 className="font-bold text-sky-900 mb-4 flex items-center gap-2">
-        <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-sky-500"></span></span>
+        <span className="relative flex h-3 w-3">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-sky-500"></span>
+        </span>
         募集中のユーザー
       </h3>
 
@@ -265,9 +314,15 @@ export default function KoetomoApp() {
         {posts.length === 0 && <p className="text-center text-gray-400 py-10">現在募集はありません</p>}
         {posts.map(post => (
           <div key={post.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-sky-400 flex justify-between items-center transition hover:shadow-md">
-            <div>
-              <p className="font-bold text-slate-800">{post.name}</p>
-              <p className="text-xs text-gray-400">{new Date(post.created_at).toLocaleTimeString()} 投稿</p>
+            <div className="flex items-center gap-3">
+              {/* 募集者アイコン */}
+              <div className="text-2xl bg-sky-50 w-10 h-10 flex items-center justify-center rounded-full">
+                {post.icon || "👤"}
+              </div>
+              <div>
+                <p className="font-bold text-slate-800">{post.name}</p>
+                <p className="text-xs text-gray-400">{new Date(post.created_at).toLocaleTimeString()} 投稿</p>
+              </div>
             </div>
             <button 
               onClick={() => startCall(post.peer_id)} 
@@ -286,7 +341,12 @@ export default function KoetomoApp() {
         {callHistory.map((h, i) => (
           <div key={i} className="bg-white p-3 rounded-lg shadow-sm border min-w-[120px] text-center border-slate-100">
             <p className="text-xs font-bold mb-2 truncate text-slate-600">{h.id}</p>
-            <button onClick={() => handleFollow(h.id)} className="text-[10px] bg-pink-500 text-white px-3 py-1 rounded-full font-bold hover:bg-pink-600 transition">＋フォロー</button>
+            <button 
+              onClick={() => handleFollow(h.id)} 
+              className="text-[10px] bg-pink-500 text-white px-3 py-1 rounded-full font-bold hover:bg-pink-600 transition"
+            >
+              ＋フォロー
+            </button>
           </div>
         ))}
       </div>
@@ -306,7 +366,12 @@ export default function KoetomoApp() {
             >
               {isMuted ? '🔇' : '🎤'}
             </button>
-            <button onClick={endCall} className="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-full font-bold text-lg shadow-xl transition-transform active:scale-95">通話を終了</button>
+            <button 
+              onClick={endCall} 
+              className="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-full font-bold text-lg shadow-xl transition-transform active:scale-95"
+            >
+              通話を終了
+            </button>
           </div>
           {isMuted && <p className="mt-4 text-orange-400 font-bold">現在ミュート中です</p>}
         </div>
