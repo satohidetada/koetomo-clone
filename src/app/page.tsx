@@ -42,11 +42,14 @@ export default function KoetomoApp() {
     };
   }, []);
 
-  const fetchProfile = async (userId: string) => {
+const fetchProfile = async (userId: string) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (data) {
       setProfile(data);
-      initPeer(data.peer_id);
+      // ここで確実にPeerIDを渡して初期化
+      if (data.peer_id) {
+        initPeer(data.peer_id);
+      }
     }
   };
 
