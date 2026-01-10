@@ -10,13 +10,13 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export default function KoetomoApp() {
   const [user, setUser] = useState<any>(null);
-  const [view, setView] = useState<'home' | 'mypage'>('home'); // 画面切り替え用
+  const [view, setView] = useState<'home' | 'mypage'>('home'); 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [profile, setProfile] = useState({ id: "", username: "匿名", gender: "未設定", peer_id: "", icon: "👤" });
   const [posts, setPosts] = useState<any[]>([]);
   const [inCall, setInCall] = useState(false);
-  const [isMuted, setIsMuted] = useState(false); // ミュート状態管理
+  const [isMuted, setIsMuted] = useState(false); 
   const [callHistory, setCallHistory] = useState<{id: string, name: string}[]>([]);
   
   const peerRef = useRef<Peer | null>(null);
@@ -60,7 +60,6 @@ export default function KoetomoApp() {
     }
   };
 
-  // マイページ用のプロフィール更新関数
   const updateProfile = async () => {
     const { error } = await supabase.from('profiles').update({
       username: profile.username,
@@ -70,7 +69,7 @@ export default function KoetomoApp() {
     if (error) alert("更新に失敗しました");
     else {
       alert("プロフィールを更新しました！");
-      setView('home'); // ホームに戻る
+      setView('home'); 
     }
   };
 
@@ -79,74 +78,70 @@ export default function KoetomoApp() {
     if (data) setPosts(data);
   };
 
-const initPeer = async (fixedId: string) => {
-  const { Peer } = await import('peerjs');
-  
-  // 【ポイント1】古い接続を掃除（二重接続エラーを防止）
-  if (peerRef.current) {
-    peerRef.current.destroy();
-  }
-
-  const peer = new (Peer as any)(fixedId, {
-    config: {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-      ]
+  const initPeer = async (fixedId: string) => {
+    const { Peer } = await import('peerjs');
+    
+    if (peerRef.current) {
+      peerRef.current.destroy();
     }
-  }) as Peer;
-  peerRef.current = peer;
 
-  peer.on('open', (id) => console.log("PeerID opened:", id));
+    const peer = new (Peer as any)(fixedId, {
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+        ]
+      }
+    }) as Peer;
+    peerRef.current = peer;
 
-  // --- 【ポイント2】着信時の処理（確実に画面を切り替える） ---
-  peer.on('call', async (call: MediaConnection) => {
-    // 1. 確認ダイアログを出す前に、まず画面を「通話中」の状態に切り替える
-    setInCall(true); 
+    peer.on('open', (id) => console.log("PeerID opened:", id));
 
-    // 2. ブラウザが画面を青く塗り替える時間を 0.3秒だけ与えてから confirm を出す
-    setTimeout(async () => {
-      if (confirm("着信があります。通話しますか？")) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          localStreamRef.current = stream;
-          setupCallEvents(call); 
-          call.answer(stream);
-        } catch (err) {
-          alert("マイクの使用を許可してください");
+    peer.on('call', async (call: MediaConnection) => {
+      // 1. ダイアログの前に青い画面へ切り替え指示
+      setInCall(true); 
+
+      // 2. 0.3秒のディレイでブラウザのレンダリングを優先させる
+      setTimeout(async () => {
+        if (confirm("着信があります。通話しますか？")) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            localStreamRef.current = stream;
+            setupCallEvents(call); 
+            call.answer(stream);
+          } catch (err) {
+            alert("マイクの使用を許可してください");
+            setInCall(false);
+          }
+        } else {
+          call.close();
           setInCall(false);
         }
-      } else {
-        call.close();
-        setInCall(false);
-      }
-    }, 300); 
-  });
+      }, 300); 
+    });
 
-  peer.on('error', (err) => {
-    console.error("PeerJSエラー:", err);
-    setInCall(false);
-  });
+    peer.on('error', (err) => {
+      console.error("PeerJSエラー:", err);
+      setInCall(false);
+    });
 
-  peer.on('disconnected', () => {
-    console.log("PeerJS切断。再接続します...");
-    peer.reconnect();
-  });
-};
+    peer.on('disconnected', () => {
+      console.log("PeerJS切断。再接続します...");
+      peer.reconnect();
+    });
+  };
 
-const setupCallEvents = (call: MediaConnection) => {
+  const setupCallEvents = (call: MediaConnection) => {
     setInCall(true);
     call.on('stream', (remoteStream: MediaStream) => {
       console.log("音声ストリームを受信:", remoteStream.id);
       
-      // 音声タグにストリームをセットする関数
       const playStream = () => {
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = remoteStream;
           remoteAudioRef.current.play().catch(e => console.error("再生失敗:", e));
         } else {
-          // もしタグがまだ見つからなければ、0.1秒後に再試行
           setTimeout(playStream, 100);
         }
       };
@@ -155,7 +150,6 @@ const setupCallEvents = (call: MediaConnection) => {
     
     call.on('close', () => endCall());
     
-    // 履歴保存（ここは変更なし）
     setCallHistory(prev => {
       if (prev.find(h => h.id === call.peer)) return prev;
       return [...prev, { id: call.peer, name: "通話した相手" }];
@@ -181,7 +175,7 @@ const setupCallEvents = (call: MediaConnection) => {
       name: profile.username, 
       gender: profile.gender, 
       peer_id: profile.peer_id,
-      icon: profile.icon // 今回追加したアイコン情報
+      icon: profile.icon 
     }]);
     if (error) alert("募集に失敗しました");
     else alert("募集を投稿しました！");
@@ -189,7 +183,7 @@ const setupCallEvents = (call: MediaConnection) => {
 
   const startCall = async (targetPeerId: string) => {
     if (!peerRef.current) return;
-    setInCall(true); // 発信側も画面を切り替える
+    setInCall(true); 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStreamRef.current = stream;
@@ -201,7 +195,6 @@ const setupCallEvents = (call: MediaConnection) => {
     }
   };
 
-  // --- ミュート切り替え ---
   const toggleMute = () => {
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach(track => {
@@ -211,42 +204,37 @@ const setupCallEvents = (call: MediaConnection) => {
     }
   };
 
-const endCall = async () => {
-  // 1. マイクを止める
-  localStreamRef.current?.getTracks().forEach(track => track.stop());
-  
-  // 2. 自分の募集（ポスト）をデータベースから削除する（機能を維持）
-  if (user) {
-    await supabase.from('posts').delete().eq('user_id', user.id);
-  }
+  const endCall = async () => {
+    localStreamRef.current?.getTracks().forEach(track => track.stop());
+    
+    if (user) {
+      await supabase.from('posts').delete().eq('user_id', user.id);
+    }
 
-  // 3. 画面表示を戻す
-  setInCall(false);
-  setIsMuted(false);
-  
-  // 4. PeerJS の状態を完全にリセットするためリロード（一番確実な方法です）
-  window.location.reload();
-};
+    setInCall(false);
+    setIsMuted(false);
+    window.location.reload();
+  };
 
   const handleFollow = async (targetId: string) => {
     alert(`ID: ${targetId} をフォローしました！`);
   };
-// --- 自分の募集を削除する機能 ---
+
   const deletePost = async (postId: string) => {
     if (!confirm("自分の募集を削除しますか？")) return;
     const { error } = await supabase
       .from('posts')
       .delete()
       .eq('id', postId)
-      .eq('user_id', user.id); // 自分の投稿のみ削除可能にする安全策
+      .eq('user_id', user.id); 
 
     if (error) {
       alert("削除に失敗しました");
     } else {
-      fetchPosts(); // リストを最新状態に更新
+      fetchPosts(); 
     }
   };
-  // --- ログイン画面 ---
+
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-sky-50 p-6 text-black">
@@ -282,7 +270,6 @@ const endCall = async () => {
     );
   }
 
-  // --- マイページ画面 ---
   if (view === 'mypage') {
     return (
       <div className="min-h-screen bg-sky-50 p-6 max-w-md mx-auto text-black">
@@ -325,7 +312,6 @@ const endCall = async () => {
     );
   }
 
-  // --- メイン画面 ---
   return (
     <div className="min-h-screen bg-sky-50 p-4 max-w-md mx-auto pb-24 text-black">
       <header className="flex justify-between items-center mb-6">
@@ -363,7 +349,6 @@ const endCall = async () => {
         {posts.map(post => (
           <div key={post.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-sky-400 flex justify-between items-center transition hover:shadow-md">
             <div className="flex items-center gap-3">
-              {/* 募集者アイコン */}
               <div className="text-2xl bg-sky-50 w-10 h-10 flex items-center justify-center rounded-full">
                 {post.icon || "👤"}
               </div>
@@ -372,24 +357,24 @@ const endCall = async () => {
                 <p className="text-xs text-gray-400">{new Date(post.created_at).toLocaleTimeString()} 投稿</p>
               </div>
             </div>
-<div className="flex gap-2">
-  {post.user_id === user.id ? (
-    <button 
-      onClick={() => deletePost(post.id)}
-      className="px-4 py-2 text-xs font-bold text-red-500 bg-red-50 rounded-full border border-red-100 hover:bg-red-100 transition active:scale-90"
-    >
-      削除
-    </button>
-  ) : (
-    <button 
-      onClick={() => startCall(post.peer_id)} 
-      disabled={inCall} 
-      className={`px-5 py-2 rounded-full font-bold text-white transition ${inCall ? 'bg-gray-300' : 'bg-green-500 hover:bg-green-600 shadow-md shadow-green-100'}`}
-    >
-      通話
-    </button>
-  )}
-</div>
+            <div className="flex gap-2">
+              {post.user_id === user.id ? (
+                <button 
+                  onClick={() => deletePost(post.id)}
+                  className="px-4 py-2 text-xs font-bold text-red-500 bg-red-50 rounded-full border border-red-100 hover:bg-red-100 transition active:scale-90"
+                >
+                  削除
+                </button>
+              ) : (
+                <button 
+                  onClick={() => startCall(post.peer_id)} 
+                  disabled={inCall} 
+                  className={`px-5 py-2 rounded-full font-bold text-white transition ${inCall ? 'bg-gray-300' : 'bg-green-500 hover:bg-green-600 shadow-md shadow-green-100'}`}
+                >
+                  通話
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -435,7 +420,6 @@ const endCall = async () => {
           {isMuted && <p className="mt-4 text-orange-400 font-bold">現在ミュート中です</p>}
         </div>
       )}
-{/* hidden属性をつけて、常にブラウザに存在させる */}
       <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
     </div>
   );
