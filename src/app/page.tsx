@@ -8,7 +8,7 @@ const SUPABASE_URL = "https://zutzyawogcnogoohyewy.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_tqjrnlZIfAoQMNeo_fHkuA_Y4PpQh2N";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-export default function KOETALKApp() {
+export default function KoetomoApp() {
   const [user, setUser] = useState<any>(null);
   const [view, setView] = useState<'home' | 'mypage'>('home'); // 画面切り替え用
   const [email, setEmail] = useState("");
