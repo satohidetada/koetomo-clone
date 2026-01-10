@@ -108,16 +108,17 @@ const initPeer = async (fixedId: string) => {
 
 peer.on('call', async (call: MediaConnection) => {
       setInCall(true); 
-
       setTimeout(async () => {
         if (confirm("着信があります。通話しますか？")) {
           try {
-            // 先に自分のマイクを確保
+            // 1. 先に自分のマイクを確保
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             localStreamRef.current = stream;
             
-            // 重要：マイクが取れてから応答（answer）する
-            setupCallEvents(call); // 先にイベントをセット
+            // 2. イベントをセットしてから
+            setupCallEvents(call); 
+            
+            // 3. 最後に自分の声を載せて応答！
             call.answer(stream);
           } catch (err) {
             alert("マイクの使用を許可してください");
@@ -129,6 +130,7 @@ peer.on('call', async (call: MediaConnection) => {
         }
       }, 500);
     });
+
   };
 
 const setupCallEvents = (call: MediaConnection) => {
