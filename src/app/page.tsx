@@ -8,7 +8,7 @@ const SUPABASE_URL = "https://zutzyawogcnogoohyewy.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_tqjrnlZIfAoQMNeo_fHkuA_Y4PpQh2N";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-export default function KoetomoApp() {
+export default function KOETALKApp() {
   const [user, setUser] = useState<any>(null);
   const [view, setView] = useState<'home' | 'mypage'>('home'); // 画面切り替え用
   const [email, setEmail] = useState("");
@@ -303,7 +303,7 @@ export default function KoetomoApp() {
           <span className="font-bold text-sky-800">{profile.username}</span>
           <span className="text-[10px] text-gray-400">▼</span>
         </div>
-        <h1 className="text-sky-600 font-black">KOETOMO</h1>
+        <h1 className="text-sky-600 font-black">KOETALK</h1>
       </header>
 
       <section className="bg-white p-4 rounded-xl shadow-md mb-6">
