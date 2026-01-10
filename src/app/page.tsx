@@ -121,12 +121,17 @@ export default function KoetomoApp() {
     });
   };
 
-  const setupCallEvents = (call: MediaConnection) => {
+const setupCallEvents = (call: MediaConnection) => {
     setInCall(true);
     call.on('stream', (remoteStream: MediaStream) => {
+      console.log("相手のストリームを受信しました"); // ログで確認
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = remoteStream;
-        remoteAudioRef.current.play();
+        
+        // ブラウザの制限を回避するために明示的にplayを呼ぶ
+        remoteAudioRef.current.play().catch(err => {
+          console.error("再生に失敗しました:", err);
+        });
       }
     });
     
@@ -401,7 +406,7 @@ export default function KoetomoApp() {
           {isMuted && <p className="mt-4 text-orange-400 font-bold">現在ミュート中です</p>}
         </div>
       )}
-      <audio ref={remoteAudioRef} />
+  <audio ref={remoteAudioRef} autoPlay playsInline />
     </div>
   );
 }
