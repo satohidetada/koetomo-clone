@@ -60,6 +60,7 @@ export default function KoetomoApp() {
     }
   };
 
+  // マイページ用のプロフィール更新関数
   const updateProfile = async () => {
     const { error } = await supabase.from('profiles').update({
       username: profile.username,
@@ -69,7 +70,7 @@ export default function KoetomoApp() {
     if (error) alert("更新に失敗しました");
     else {
       alert("プロフィールを更新しました！");
-      setView('home');
+      setView('home'); // ホームに戻る
     }
   };
 
@@ -97,20 +98,26 @@ export default function KoetomoApp() {
     });
 
     peer.on('call', async (call: MediaConnection) => {
+      // 【修正箇所】まず着信中であることを視覚的に伝えるために状態をセット
       setInCall(true); 
-      if (confirm("着信があります。通話しますか？")) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          localStreamRef.current = stream;
-          call.answer(stream);
-          setupCallEvents(call);
-        } catch (err) {
-          alert("マイクへのアクセスを許可してください");
+
+      // ブラウザが画面更新を完了してからダイアログを出す
+      setTimeout(async () => {
+        if (confirm("着信があります。通話しますか？")) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            localStreamRef.current = stream;
+            call.answer(stream);
+            setupCallEvents(call);
+          } catch (err) {
+            alert("マイクへのアクセスを許可してください");
+            setInCall(false);
+          }
+        } else {
+          call.close();
           setInCall(false);
         }
-      } else {
-        setInCall(false);
-      }
+      }, 500);
     });
   };
 
@@ -157,7 +164,7 @@ export default function KoetomoApp() {
 
   const startCall = async (targetPeerId: string) => {
     if (!peerRef.current) return;
-    setInCall(true);
+    setInCall(true); // 発信側も画面を切り替える
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStreamRef.current = stream;
@@ -169,6 +176,7 @@ export default function KoetomoApp() {
     }
   };
 
+  // --- ミュート切り替え ---
   const toggleMute = () => {
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach(track => {
