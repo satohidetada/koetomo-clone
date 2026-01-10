@@ -22,6 +22,7 @@ export default function KoetomoApp() {
   const peerRef = useRef<Peer | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
+  const pendingCallRef = useRef<MediaConnection | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }: any) => {
@@ -41,6 +42,32 @@ export default function KoetomoApp() {
       peerRef.current?.destroy();
     };
   }, []);
+
+  // --- 着信バグ修正用フック（画面描画を優先させる） ---
+  useEffect(() => {
+    if (inCall && pendingCallRef.current && !localStreamRef.current) {
+      // 300ms待機して、確実に通話中画面（青背景）を描画させてからダイアログを出す
+      const timer = setTimeout(async () => {
+        if (confirm("着信があります。通話しますか？")) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            localStreamRef.current = stream;
+            setupCallEvents(pendingCallRef.current!); 
+            pendingCallRef.current!.answer(stream);
+          } catch (err) {
+            alert("マイクの使用を許可してください");
+            setInCall(false);
+            pendingCallRef.current = null;
+          }
+        } else {
+          pendingCallRef.current!.close();
+          setInCall(false);
+          pendingCallRef.current = null;
+        }
+      }, 300); 
+      return () => clearTimeout(timer);
+    }
+  }, [inCall]);
 
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId);
@@ -99,26 +126,9 @@ export default function KoetomoApp() {
     peer.on('open', (id) => console.log("PeerID opened:", id));
 
     peer.on('call', async (call: MediaConnection) => {
-      // 1. ダイアログの前に青い画面へ切り替え指示
+      // 1. まずフラグだけ立てて画面を切り替える
+      pendingCallRef.current = call;
       setInCall(true); 
-
-      // 2. 0.3秒のディレイでブラウザのレンダリングを優先させる
-      setTimeout(async () => {
-        if (confirm("着信があります。通話しますか？")) {
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            localStreamRef.current = stream;
-            setupCallEvents(call); 
-            call.answer(stream);
-          } catch (err) {
-            alert("マイクの使用を許可してください");
-            setInCall(false);
-          }
-        } else {
-          call.close();
-          setInCall(false);
-        }
-      }, 300); 
     });
 
     peer.on('error', (err) => {
@@ -206,6 +216,7 @@ export default function KoetomoApp() {
 
   const endCall = async () => {
     localStreamRef.current?.getTracks().forEach(track => track.stop());
+    localStreamRef.current = null;
     
     if (user) {
       await supabase.from('posts').delete().eq('user_id', user.id);
@@ -213,6 +224,7 @@ export default function KoetomoApp() {
 
     setInCall(false);
     setIsMuted(false);
+    pendingCallRef.current = null;
     window.location.reload();
   };
 
