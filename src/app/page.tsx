@@ -79,9 +79,18 @@ export default function KoetomoApp() {
     if (data) setPosts(data);
   };
 
-  const initPeer = async (fixedId: string) => {
+const initPeer = async (fixedId: string) => {
     const { Peer } = await import('peerjs');
-    const peer = new (Peer as any)(fixedId) as Peer;
+    // ↓ configを追加して、ネットワーク環境に左右されないようにします
+    const peer = new (Peer as any)(fixedId, {
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+        ]
+      }
+    }) as Peer;
     peerRef.current = peer;
 
     peer.on('open', (id) => {
@@ -97,20 +106,21 @@ export default function KoetomoApp() {
       peer.reconnect();
     });
 
-    peer.on('call', async (call: MediaConnection) => {
-      // 【重要修正】着信した瞬間にまずUIを「通話中」にして、相手が操作していることを明示する
+peer.on('call', async (call: MediaConnection) => {
       setInCall(true); 
 
-      // ブラウザのレンダリング時間を確保するために少し待機してダイアログを表示
       setTimeout(async () => {
         if (confirm("着信があります。通話しますか？")) {
           try {
+            // 先に自分のマイクを確保
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             localStreamRef.current = stream;
+            
+            // 重要：マイクが取れてから応答（answer）する
+            setupCallEvents(call); // 先にイベントをセット
             call.answer(stream);
-            setupCallEvents(call);
           } catch (err) {
-            alert("マイクへのアクセスを許可してください");
+            alert("マイクの使用を許可してください");
             setInCall(false);
           }
         } else {
