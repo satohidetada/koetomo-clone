@@ -212,19 +212,19 @@ const setupCallEvents = (call: MediaConnection) => {
   };
 
 const endCall = async () => {
-  // 1. マイク停止
+  // 1. マイクを止める
   localStreamRef.current?.getTracks().forEach(track => track.stop());
   
-  // 2. 【重要】自分の募集をデータベースから消す
+  // 2. 自分の募集（ポスト）をデータベースから削除する（機能を維持）
   if (user) {
     await supabase.from('posts').delete().eq('user_id', user.id);
   }
 
-  // 3. 状態リセット
+  // 3. 画面表示を戻す
   setInCall(false);
   setIsMuted(false);
   
-  // 4. PeerJSの状態を完全にクリーンにするためリロード
+  // 4. PeerJS の状態を完全にリセットするためリロード（一番確実な方法です）
   window.location.reload();
 };
 
