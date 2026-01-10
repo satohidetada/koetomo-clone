@@ -85,8 +85,19 @@ export default function KoetomoApp() {
     const peer = new (Peer as any)(fixedId) as Peer;
     peerRef.current = peer;
 
-    peer.on('open', (id) => {
+ peer.on('open', (id) => {
       console.log("PeerID opened:", id);
+    });
+
+    // --- ここを追加 ---
+    peer.on('error', (err) => {
+      console.error("PeerJSエラー:", err);
+      // エラーが起きたら再接続を試みるなどの処理が可能
+    });
+
+    peer.on('disconnected', () => {
+      console.log("PeerJS切断。再接続します...");
+      peer.reconnect();
     });
 
     peer.on('call', async (call: MediaConnection) => {
