@@ -106,30 +106,53 @@ const initPeer = async (fixedId: string) => {
       peer.reconnect();
     });
 
-peer.on('call', async (call: MediaConnection) => {
-      setInCall(true); 
-      setTimeout(async () => {
-        if (confirm("着信があります。通話しますか？")) {
-          try {
-            // 1. 先に自分のマイクを確保
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            localStreamRef.current = stream;
-            
-            // 2. イベントをセットしてから
-            setupCallEvents(call); 
-            
-            // 3. 最後に自分の声を載せて応答！
-            call.answer(stream);
-          } catch (err) {
-            alert("マイクの使用を許可してください");
-            setInCall(false);
-          }
-        } else {
-          call.close();
+const initPeer = async (fixedId: string) => {
+  const { Peer } = await import('peerjs');
+  
+  // 【追加】古い接続を掃除する（二重着信バグを防ぐ）
+  if (peerRef.current) peerRef.current.destroy();
+
+  const peer = new (Peer as any)(fixedId, {
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ]
+    }
+  }) as Peer;
+  peerRef.current = peer;
+
+  peer.on('open', (id) => console.log("PeerID opened:", id));
+
+  // --- 着信処理の安定化 ---
+  peer.on('call', async (call: MediaConnection) => {
+    // 1. まず画面を強制的に「通話中（青画面）」にする
+    setInCall(true); 
+
+    // 2. 0.3秒だけ待ってからconfirmを出す（画面が切り替わる時間をブラウザに与える）
+    setTimeout(async () => {
+      if (confirm("着信があります。通話しますか？")) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          localStreamRef.current = stream;
+          setupCallEvents(call); 
+          call.answer(stream);
+        } catch (err) {
+          alert("マイクの使用を許可してください");
           setInCall(false);
         }
-      }, 500);
-    });
+      } else {
+        call.close();
+        setInCall(false);
+      }
+    }, 300); 
+  });
+
+  peer.on('error', (err) => {
+    console.error("PeerJSエラー:", err);
+    setInCall(false);
+  });
+};
 
   };
 
@@ -209,12 +232,22 @@ const setupCallEvents = (call: MediaConnection) => {
     }
   };
 
-  const endCall = () => {
-    localStreamRef.current?.getTracks().forEach(track => track.stop());
-    setInCall(false);
-    setIsMuted(false);
-    window.location.reload();
-  };
+const endCall = async () => {
+  // 1. マイク停止
+  localStreamRef.current?.getTracks().forEach(track => track.stop());
+  
+  // 2. 【重要】自分の募集をデータベースから消す
+  if (user) {
+    await supabase.from('posts').delete().eq('user_id', user.id);
+  }
+
+  // 3. 状態リセット
+  setInCall(false);
+  setIsMuted(false);
+  
+  // 4. PeerJSの状態を完全にクリーンにするためリロード
+  window.location.reload();
+};
 
   const handleFollow = async (targetId: string) => {
     alert(`ID: ${targetId} をフォローしました！`);
