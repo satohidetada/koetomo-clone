@@ -80,43 +80,19 @@ export default function KoetomoApp() {
   };
 
 const initPeer = async (fixedId: string) => {
-    const { Peer } = await import('peerjs');
-    // ↓ configを追加して、ネットワーク環境に左右されないようにします
-    const peer = new (Peer as any)(fixedId, {
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-        ]
-      }
-    }) as Peer;
-    peerRef.current = peer;
-
-    peer.on('open', (id) => {
-      console.log("PeerID opened:", id);
-    });
-
-    peer.on('error', (err) => {
-      console.error("PeerJSエラー:", err);
-    });
-
-    peer.on('disconnected', () => {
-      console.log("PeerJS切断。再接続します...");
-      peer.reconnect();
-    });
-
-const initPeer = async (fixedId: string) => {
   const { Peer } = await import('peerjs');
   
-  // 【追加】古い接続を掃除する（二重着信バグを防ぐ）
-  if (peerRef.current) peerRef.current.destroy();
+  // 【ポイント1】古い接続を掃除（二重接続エラーを防止）
+  if (peerRef.current) {
+    peerRef.current.destroy();
+  }
 
   const peer = new (Peer as any)(fixedId, {
     config: {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
       ]
     }
   }) as Peer;
@@ -124,12 +100,12 @@ const initPeer = async (fixedId: string) => {
 
   peer.on('open', (id) => console.log("PeerID opened:", id));
 
-  // --- 着信処理の安定化 ---
+  // --- 【ポイント2】着信時の処理（確実に画面を切り替える） ---
   peer.on('call', async (call: MediaConnection) => {
-    // 1. まず画面を強制的に「通話中（青画面）」にする
+    // 1. 確認ダイアログを出す前に、まず画面を「通話中」の状態に切り替える
     setInCall(true); 
 
-    // 2. 0.3秒だけ待ってからconfirmを出す（画面が切り替わる時間をブラウザに与える）
+    // 2. ブラウザが画面を青く塗り替える時間を 0.3秒だけ与えてから confirm を出す
     setTimeout(async () => {
       if (confirm("着信があります。通話しますか？")) {
         try {
@@ -152,9 +128,12 @@ const initPeer = async (fixedId: string) => {
     console.error("PeerJSエラー:", err);
     setInCall(false);
   });
-};
 
-  };
+  peer.on('disconnected', () => {
+    console.log("PeerJS切断。再接続します...");
+    peer.reconnect();
+  });
+};
 
 const setupCallEvents = (call: MediaConnection) => {
     setInCall(true);
