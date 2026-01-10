@@ -197,7 +197,21 @@ export default function KoetomoApp() {
   const handleFollow = async (targetId: string) => {
     alert(`ID: ${targetId} をフォローしました！`);
   };
+// --- 自分の募集を削除する機能 ---
+  const deletePost = async (postId: string) => {
+    if (!confirm("自分の募集を削除しますか？")) return;
+    const { error } = await supabase
+      .from('posts')
+      .delete()
+      .eq('id', postId)
+      .eq('user_id', user.id); // 自分の投稿のみ削除可能にする安全策
 
+    if (error) {
+      alert("削除に失敗しました");
+    } else {
+      fetchPosts(); // リストを最新状態に更新
+    }
+  };
   // --- ログイン画面 ---
   if (!user) {
     return (
@@ -324,13 +338,24 @@ export default function KoetomoApp() {
                 <p className="text-xs text-gray-400">{new Date(post.created_at).toLocaleTimeString()} 投稿</p>
               </div>
             </div>
-            <button 
-              onClick={() => startCall(post.peer_id)} 
-              disabled={inCall || post.peer_id === profile.peer_id} 
-              className={`px-5 py-2 rounded-full font-bold text-white transition ${inCall || post.peer_id === profile.peer_id ? 'bg-gray-300' : 'bg-green-500 hover:bg-green-600 shadow-md shadow-green-100'}`}
-            >
-              {post.peer_id === profile.peer_id ? "自分の投稿" : "通話"}
-            </button>
+<div className="flex gap-2">
+  {post.user_id === user.id ? (
+    <button 
+      onClick={() => deletePost(post.id)}
+      className="px-4 py-2 text-xs font-bold text-red-500 bg-red-50 rounded-full border border-red-100 hover:bg-red-100 transition active:scale-90"
+    >
+      削除
+    </button>
+  ) : (
+    <button 
+      onClick={() => startCall(post.peer_id)} 
+      disabled={inCall} 
+      className={`px-5 py-2 rounded-full font-bold text-white transition ${inCall ? 'bg-gray-300' : 'bg-green-500 hover:bg-green-600 shadow-md shadow-green-100'}`}
+    >
+      通話
+    </button>
+  )}
+</div>
           </div>
         ))}
       </div>
