@@ -43,13 +43,30 @@ export default function KoetomoApp() {
   }, []);
 
 const fetchProfile = async (userId: string) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (data) {
-      setProfile(data);
-      // ここで確実にPeerIDを渡して初期化
-      if (data.peer_id) {
-        initPeer(data.peer_id);
+    // .single() をやめて、配列として取得する
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId);
+
+    if (error) {
+      console.error("Profile fetch error:", error.message);
+      return;
+    }
+
+    // データが存在する場合のみ処理する
+    if (data && data.length > 0) {
+      const userProfile = data[0];
+      setProfile(userProfile);
+      
+      if (userProfile.peer_id) {
+        console.log("PeerID found, initializing...");
+        initPeer(userProfile.peer_id);
+      } else {
+        console.error("PeerID is missing in the database");
       }
+    } else {
+      console.log("No profile found for this user.");
     }
   };
 
