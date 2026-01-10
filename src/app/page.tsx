@@ -124,19 +124,24 @@ export default function KoetomoApp() {
 const setupCallEvents = (call: MediaConnection) => {
     setInCall(true);
     call.on('stream', (remoteStream: MediaStream) => {
-      console.log("相手のストリームを受信しました"); // ログで確認
-      if (remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = remoteStream;
-        
-        // ブラウザの制限を回避するために明示的にplayを呼ぶ
-        remoteAudioRef.current.play().catch(err => {
-          console.error("再生に失敗しました:", err);
-        });
-      }
+      console.log("音声ストリームを受信:", remoteStream.id);
+      
+      // 音声タグにストリームをセットする関数
+      const playStream = () => {
+        if (remoteAudioRef.current) {
+          remoteAudioRef.current.srcObject = remoteStream;
+          remoteAudioRef.current.play().catch(e => console.error("再生失敗:", e));
+        } else {
+          // もしタグがまだ見つからなければ、0.1秒後に再試行
+          setTimeout(playStream, 100);
+        }
+      };
+      playStream();
     });
     
     call.on('close', () => endCall());
     
+    // 履歴保存（ここは変更なし）
     setCallHistory(prev => {
       if (prev.find(h => h.id === call.peer)) return prev;
       return [...prev, { id: call.peer, name: "通話した相手" }];
@@ -406,7 +411,8 @@ const setupCallEvents = (call: MediaConnection) => {
           {isMuted && <p className="mt-4 text-orange-400 font-bold">現在ミュート中です</p>}
         </div>
       )}
-  <audio ref={remoteAudioRef} autoPlay playsInline />
+{/* hidden属性をつけて、常にブラウザに存在させる */}
+      <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
     </div>
   );
 }
