@@ -61,30 +61,31 @@ export default function KoetomoApp() {
 
 // --- 着信バグ修正用フック ---
 useEffect(() => {
+  // pendingCallRefがあるときだけ動くように制御
   if (inCall && pendingCallRef.current && !localStreamRef.current) {
-    const timer = setTimeout(async () => {
+    const handleIncomingCall = async () => {
       if (confirm("着信があります。通話しますか？")) {
         try {
-          // 自分のマイクを取得
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           localStreamRef.current = stream;
           
+          // マイクを確実にONにする
+          stream.getAudioTracks().forEach(track => { track.enabled = true; });
+
+          // 重要：answerの前にイベントを登録
           setupCallEvents(pendingCallRef.current!); 
-          
-          // ★最重要：answer() の引数に stream を渡して、自分の声を相手に送る
           pendingCallRef.current!.answer(stream); 
         } catch (err) {
-          alert("マイクの使用を許可してください");
+          console.error("マイク取得失敗:", err);
+          alert("マイクを許可してください");
           setInCall(false);
-          pendingCallRef.current = null;
         }
       } else {
         pendingCallRef.current!.close();
         setInCall(false);
-        pendingCallRef.current = null;
       }
-    }, 300); 
-    return () => clearTimeout(timer);
+    };
+    handleIncomingCall();
   }
 }, [inCall]);
 
@@ -197,31 +198,26 @@ const peer = new (Peer as any)(fixedId, {
 
 const setupCallEvents = (call: MediaConnection) => {
   call.on('stream', (remoteStream: MediaStream) => {
+    console.log("相手の音声ストリームを受信しました");
     setIsCalling(false); 
     setInCall(true);
     
     if (remoteAudioRef.current) {
-      // 相手の音声をセット
+      // 一度nullにしてからセットし直すのがコツ
+      remoteAudioRef.current.srcObject = null;
       remoteAudioRef.current.srcObject = remoteStream;
       
-      // 自動再生ブロック対策：一度操作があれば再生するようにする
-      const playPromise = remoteAudioRef.current.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(() => {
-          // ブロックされた場合、画面クリックで再生開始
-          window.addEventListener('click', () => {
-            remoteAudioRef.current?.play();
-          }, { once: true });
-        });
-      }
+      // 読み込み完了後に再生
+      remoteAudioRef.current.onloadedmetadata = () => {
+        remoteAudioRef.current?.play().catch(e => console.error("再生エラー:", e));
+      };
     }
   });
 
   call.on('close', () => endCall());
-  call.on('error', () => endCall()); // エラー時も安全に終了
+  call.on('error', () => endCall());
 
   setCallHistory(prev => {
-    // 通話相手のIDを履歴に追加
     if (prev.find(h => h.id === call.peer)) return prev;
     return [...prev, { id: call.peer, name: "通話した相手" }];
   });
@@ -259,28 +255,33 @@ const startCall = async (targetPeerId: string, targetUserId?: string) => {
   try {
     if (targetUserId) lastActiveCallUserIdRef.current = targetUserId;
     
-    // 1. まず自分のマイクを取得
+    // 1. マイクを取得
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     localStreamRef.current = stream;
-    
-    // 2. そのマイクを相手に送りながら発信する
+
+    // 2. 発信（ここでstreamを確実に渡す）
     const call = peerRef.current.call(targetPeerId, stream);
     
-    // 3. 通話イベントをセット
-    setupCallEvents(call);
+    // 3. イベント登録（この中で相手のstreamを待つ）
+    if (call) {
+      setupCallEvents(call);
+    } else {
+      throw new Error("Call object could not be created");
+    }
   } catch (err) {
-    console.error("マイク取得エラー:", err);
-    alert("マイクの使用を許可してください。");
+    console.error("発信失敗:", err);
+    alert("通話を開始できませんでした。マイクを確認してください。");
     setIsCalling(false);
   }
 };
 
-  const toggleMute = () => {
+const toggleMute = () => {
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach(track => {
-track.enabled = true;
-  console.log("マイク状態:", track.readyState); // デバッグ用
-});
+        // 現在の状態を反転させる
+        track.enabled = !track.enabled;
+        setIsMuted(!track.enabled);
+      });
     }
   };
 
