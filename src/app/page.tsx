@@ -186,24 +186,29 @@ const fetchPosts = async () => {
   };
 
 const setupCallEvents = (call: MediaConnection) => {
-  // ここでの setInCall(true) を削除し、下の stream イベント内に移動
-  
   call.on('stream', (remoteStream: MediaStream) => {
-    setIsCalling(false); // 呼び出し中を終了
-    setInCall(true);    // ここで初めて通話中画面にする
+    setIsCalling(false); 
+    setInCall(true);
     
-    const playStream = () => {
-      // ...既存の再生処理...
-    };
-    playStream();
+    // ここが重要：受け取ったストリームをaudio要素にセットして再生する
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = remoteStream;
+      remoteAudioRef.current.onloadedmetadata = () => {
+        remoteAudioRef.current?.play().catch(e => console.error("再生エラー:", e));
+      };
+    }
   });
-    call.on('close', () => endCall());
-    
-    setCallHistory(prev => {
-      if (prev.find(h => h.id === call.peer)) return prev;
-      return [...prev, { id: call.peer, name: "通話した相手" }];
-    });
-  };
+
+  call.on('close', () => endCall());
+  
+  // 相手側が切断したことも検知できるように追加
+  call.on('error', () => endCall());
+
+  setCallHistory(prev => {
+    if (prev.find(h => h.id === call.peer)) return prev;
+    return [...prev, { id: call.peer, name: "通話した相手" }];
+  });
+};
 
   const handleAuth = async (type: 'login' | 'signup') => {
     const { data, error } = type === 'signup' 
