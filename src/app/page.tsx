@@ -131,19 +131,27 @@ export default function KoetomoApp() {
   };
 
 const fetchPosts = async () => {
-  // .select('*') からプロフィールの情報を結合する形式に変更
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('posts')
     .select(`
       id,
       created_at,
       user_id,
       peer_id,
-      profiles:user_id (username, icon)
+      profiles:user_id (  // ← ここを profiles!posts_user_id_fkey から simple な profiles:user_id に戻すか確認
+        username,
+        icon
+      )
     `)
     .order('created_at', { ascending: false })
     .limit(20);
 
+  if (error) {
+    console.error("募集取得エラー:", error);
+    // もしここで「Could not find a relation between posts and profiles」と出る場合
+    // 以下の行を試してください: .select('*, profiles:profiles(username, icon)')
+    return;
+  }
   if (data) setPosts(data);
 };
 
