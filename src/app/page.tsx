@@ -278,7 +278,7 @@ export default function KoetomoApp() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-sky-50 p-6 text-black">
         <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
-          <h1 className="text-2xl font-bold mb-6 text-sky-600 text-center">ひまつぶし通話</h1>
+          <h1 className="text-2xl font-bold mb-6 text-sky-600 text-center">KOETALK</h1>
           <input className="w-full border p-3 mb-3 rounded-lg outline-none focus:border-sky-500" placeholder="メール" onChange={e => setEmail(e.target.value)} />
           <input className="w-full border p-3 mb-6 rounded-lg outline-none focus:border-sky-500" type="password" placeholder="パスワード" onChange={e => setPassword(e.target.value)} />
           <div className="flex gap-2">
