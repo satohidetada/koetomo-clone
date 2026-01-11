@@ -164,15 +164,21 @@ const fetchPosts = async () => {
     const { Peer } = await import('peerjs');
     if (peerRef.current) peerRef.current.destroy();
 
-    const peer = new (Peer as any)(fixedId, {
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-        ]
-      }
-    }) as Peer;
+// initPeer 関数の中の config を以下に書き換えてください
+const peer = new (Peer as any)(fixedId, {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+    ],
+    // 接続のタイムアウトを回避するための設定
+    iceCandidatePoolSize: 10,
+  },
+  debug: 3 // エラーの原因をコンソールで詳しく見るため
+}) as Peer;
     peerRef.current = peer;
 
     peer.on('open', (id) => console.log("PeerID opened:", id));
@@ -272,9 +278,9 @@ const startCall = async (targetPeerId: string, targetUserId?: string) => {
   const toggleMute = () => {
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach(track => {
-        track.enabled = !track.enabled;
-        setIsMuted(!track.enabled);
-      });
+track.enabled = true;
+  console.log("マイク状態:", track.readyState); // デバッグ用
+});
     }
   };
 
