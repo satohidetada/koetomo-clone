@@ -42,8 +42,15 @@ export default function KoetomoApp() {
     });
 
     fetchPosts();
+// ★ ここを修正：イベントが発生したときに fetchPosts を確実に実行させる
     const channel = supabase.channel('realtime_posts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, fetchPosts)
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'posts' }, 
+        () => {
+          console.log("Change detected, fetching posts...");
+          fetchPosts(); // 変更があったら常に最新の結合データを取得し直す
+        }
+      )
       .subscribe();
 
     return () => { 
@@ -245,21 +252,24 @@ const endCall = async () => {
     localStreamRef.current?.getTracks().forEach(track => track.stop());
     localStreamRef.current = null;
     
+    // 状態をリセット
+    const wasInCall = inCall; // 実際に通話していたか記録
     setInCall(false);
-    setIsCalling(false); // ★この行を追加：呼び出し中フラグもオフにする
+    setIsCalling(false);
     setIsMuted(false);
     pendingCallRef.current = null;
 
-    // 通話終了後にフォロー確認ダイアログを表示
+    // 呼び出しキャンセルではなく、実際に「通話」していた場合のみフォローを促す
     const targetUserId = lastActiveCallUserIdRef.current;
-    if (targetUserId && targetUserId !== user.id) {
+    if (wasInCall && targetUserId && targetUserId !== user.id) {
       setTimeout(() => {
-        // キャンセルボタンで終了した場合はダイアログを出さないように条件追加も可能
         if (confirm("通話が終了しました。相手をフォローしますか？")) {
           handleFollow(targetUserId);
         }
         lastActiveCallUserIdRef.current = null;
       }, 500);
+    } else {
+      lastActiveCallUserIdRef.current = null; // キャンセル時はリセットのみ
     }
   };
   const handleFollow = async (targetId: string) => {
