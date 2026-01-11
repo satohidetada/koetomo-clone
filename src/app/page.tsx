@@ -16,6 +16,7 @@ export default function KoetomoApp() {
   const [profile, setProfile] = useState({ id: "", username: "匿名", gender: "未設定", peer_id: "", icon: "👤" });
   const [posts, setPosts] = useState<any[]>([]);
   const [inCall, setInCall] = useState(false);
+  const [isCalling, setIsCalling] = useState(false); // これを追加
   const [isMuted, setIsMuted] = useState(false); 
   const [callHistory, setCallHistory] = useState<{id: string, name: string}[]>([]);
   
@@ -156,20 +157,18 @@ export default function KoetomoApp() {
     });
   };
 
-  const setupCallEvents = (call: MediaConnection) => {
-    setInCall(true);
-    call.on('stream', (remoteStream: MediaStream) => {
-      const playStream = () => {
-        if (remoteAudioRef.current) {
-          remoteAudioRef.current.srcObject = remoteStream;
-          remoteAudioRef.current.play().catch(e => console.error("再生失敗:", e));
-        } else {
-          setTimeout(playStream, 100);
-        }
-      };
-      playStream();
-    });
+const setupCallEvents = (call: MediaConnection) => {
+  // ここでの setInCall(true) を削除し、下の stream イベント内に移動
+  
+  call.on('stream', (remoteStream: MediaStream) => {
+    setIsCalling(false); // 呼び出し中を終了
+    setInCall(true);    // ここで初めて通話中画面にする
     
+    const playStream = () => {
+      // ...既存の再生処理...
+    };
+    playStream();
+  });
     call.on('close', () => endCall());
     
     setCallHistory(prev => {
@@ -204,20 +203,23 @@ export default function KoetomoApp() {
   };
 
   // 相手のUserIdを受け取れるように拡張
-  const startCall = async (targetPeerId: string, targetUserId?: string) => {
-    if (!peerRef.current) return;
-    setInCall(true); 
-    try {
-      if (targetUserId) lastActiveCallUserIdRef.current = targetUserId;
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      localStreamRef.current = stream;
-      const call = peerRef.current.call(targetPeerId, stream);
-      setupCallEvents(call);
-    } catch (err) {
-      alert("マイクの使用を許可してください。");
-      setInCall(false);
-    }
-  };
+const startCall = async (targetPeerId: string, targetUserId?: string) => {
+  if (!peerRef.current) return;
+  
+  // 修正箇所：inCallではなくisCallingをtrueにする
+  setIsCalling(true); 
+  
+  try {
+    if (targetUserId) lastActiveCallUserIdRef.current = targetUserId;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    localStreamRef.current = stream;
+    const call = peerRef.current.call(targetPeerId, stream);
+    setupCallEvents(call);
+  } catch (err) {
+    alert("マイクの使用を許可してください。");
+    setIsCalling(false); // 失敗時は呼び出し解除
+  }
+};
 
   const toggleMute = () => {
     if (localStreamRef.current) {
@@ -399,12 +401,25 @@ export default function KoetomoApp() {
         {callHistory.length === 0 && <p className="text-xs text-gray-400">履歴はありません</p>}
       </div>
 
-      {inCall && (
+{/* --- 呼び出し中画面（相手が出るまで表示） --- */}
+      {isCalling && (
+        <div className="fixed inset-0 bg-sky-900/90 flex flex-col items-center justify-center z-[60] text-white p-6 text-center">
+          <div className="w-20 h-20 bg-sky-400 rounded-full flex items-center justify-center animate-pulse mb-6">
+            <span className="text-4xl">🔔</span>
+          </div>
+          <p className="text-xl font-bold mb-2">呼び出し中...</p>
+          <p className="text-sky-200 text-sm mb-12">相手が応答するまでお待ちください</p>
+          <button onClick={endCall} className="bg-white/20 hover:bg-white/30 text-white px-8 py-3 rounded-full font-bold transition">キャンセル</button>
+        </div>
+      )}
+
+      {/* --- 通話中画面（声が繋がった後に表示） --- */}
+      {inCall && !isCalling && (
         <div className="fixed inset-0 bg-sky-900/95 flex flex-col items-center justify-center z-50 text-white p-6 text-center">
           <div className="w-24 h-24 bg-sky-400 rounded-full flex items-center justify-center animate-bounce mb-6 shadow-2xl shadow-sky-500/50">
             <span className="text-4xl">📞</span>
           </div>
-          <p className="text-2xl font-bold mb-2">通話中...</p>
+          <p className="text-2xl font-bold mb-2">通話中</p>
           <p className="text-sky-200 text-sm mb-12">相手と繋がっています。マイクに向かって話してください。</p>
           <div className="flex gap-4">
             <button onClick={toggleMute} className={`w-16 h-16 rounded-full flex items-center justify-center font-bold text-2xl transition ${isMuted ? 'bg-orange-500 animate-pulse' : 'bg-white/20'}`}>
@@ -415,6 +430,7 @@ export default function KoetomoApp() {
           {isMuted && <p className="mt-4 text-orange-400 font-bold">現在ミュート中です</p>}
         </div>
       )}
+
       <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
     </div>
   );
