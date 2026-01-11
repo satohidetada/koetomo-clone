@@ -123,10 +123,22 @@ export default function KoetomoApp() {
     }
   };
 
-  const fetchPosts = async () => {
-    const { data } = await supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(20);
-    if (data) setPosts(data);
-  };
+const fetchPosts = async () => {
+  // .select('*') からプロフィールの情報を結合する形式に変更
+  const { data } = await supabase
+    .from('posts')
+    .select(`
+      id,
+      created_at,
+      user_id,
+      peer_id,
+      profiles:user_id (username, icon)
+    `)
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (data) setPosts(data);
+};
 
   const initPeer = async (fixedId: string) => {
     const { Peer } = await import('peerjs');
@@ -189,19 +201,18 @@ const setupCallEvents = (call: MediaConnection) => {
     }
   };
 
-  const postCallRequest = async () => {
-    if (!profile.peer_id) return alert("準備中です...");
-    const { error } = await supabase.from('posts').insert([{ 
-      user_id: user.id, 
-      name: profile.username, 
-      gender: profile.gender, 
-      peer_id: profile.peer_id,
-      icon: profile.icon 
-    }]);
-    if (error) alert("募集に失敗しました");
-    else alert("募集を投稿しました！");
-  };
-
+const postCallRequest = async () => {
+  if (!profile.peer_id) return alert("準備中です...");
+  
+  // name, icon, gender を含めず user_id だけにする
+  const { error } = await supabase.from('posts').insert([{ 
+    user_id: user.id, 
+    peer_id: profile.peer_id
+  }]);
+  
+  if (error) alert("募集に失敗しました");
+  else alert("募集を投稿しました！");
+};
   // 相手のUserIdを受け取れるように拡張
 const startCall = async (targetPeerId: string, targetUserId?: string) => {
   if (!peerRef.current) return;
@@ -372,9 +383,12 @@ const startCall = async (targetPeerId: string, targetUserId?: string) => {
         {posts.map(post => (
           <div key={post.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-sky-400 flex justify-between items-center transition hover:shadow-md">
             <div className="flex items-center gap-3">
-              <div className="text-2xl bg-sky-50 w-10 h-10 flex items-center justify-center rounded-full">{post.icon || "👤"}</div>
-              <div>
-                <p className="font-bold text-slate-800">{post.name}</p>
+      {/* post.profiles を経由して最新情報を表示 */}
+<div className="text-2xl bg-sky-50 w-10 h-10 flex items-center justify-center rounded-full">
+  {post.profiles?.icon || "👤"}
+</div>
+<div>
+  <p className="font-bold text-slate-800">{post.profiles?.username || "ユーザー"}</p>
                 <p className="text-xs text-gray-400">{new Date(post.created_at).toLocaleTimeString()} 投稿</p>
               </div>
             </div>
