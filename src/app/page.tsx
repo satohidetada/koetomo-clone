@@ -138,7 +138,7 @@ const fetchPosts = async () => {
       created_at,
       user_id,
       peer_id,
-      profiles:user_id (  // ← ここを profiles!posts_user_id_fkey から simple な profiles:user_id に戻すか確認
+      profiles:user_id (
         username,
         icon
       )
@@ -147,14 +147,15 @@ const fetchPosts = async () => {
     .limit(20);
 
   if (error) {
-    console.error("募集取得エラー:", error);
-    // もしここで「Could not find a relation between posts and profiles」と出る場合
-    // 以下の行を試してください: .select('*, profiles:profiles(username, icon)')
+    console.error("募集取得エラー:", error.message);
+    // エラーが出ている場合、ここにアラートを出すと原因がわかります
+    // alert("エラー内容: " + error.message); 
     return;
   }
-  if (data) setPosts(data);
+  
+  console.log("取得されたデータ:", data); // ブラウザのコンソールで中身を確認
+  setPosts(data || []);
 };
-
   const initPeer = async (fixedId: string) => {
     const { Peer } = await import('peerjs');
     if (peerRef.current) peerRef.current.destroy();
