@@ -241,18 +241,20 @@ const startCall = async (targetPeerId: string, targetUserId?: string) => {
     }
   };
 
-  const endCall = async () => {
+const endCall = async () => {
     localStreamRef.current?.getTracks().forEach(track => track.stop());
     localStreamRef.current = null;
     
     setInCall(false);
+    setIsCalling(false); // ★この行を追加：呼び出し中フラグもオフにする
     setIsMuted(false);
     pendingCallRef.current = null;
 
-    // 通話終了後にフォロー確認ダイアログを表示（リロードしないことで動作させる）
+    // 通話終了後にフォロー確認ダイアログを表示
     const targetUserId = lastActiveCallUserIdRef.current;
     if (targetUserId && targetUserId !== user.id) {
       setTimeout(() => {
+        // キャンセルボタンで終了した場合はダイアログを出さないように条件追加も可能
         if (confirm("通話が終了しました。相手をフォローしますか？")) {
           handleFollow(targetUserId);
         }
@@ -260,7 +262,6 @@ const startCall = async (targetPeerId: string, targetUserId?: string) => {
       }, 500);
     }
   };
-
   const handleFollow = async (targetId: string) => {
     const { error } = await supabase
       .from('follows')
