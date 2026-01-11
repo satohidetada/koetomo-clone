@@ -19,16 +19,24 @@ export default function KoetomoApp() {
   const [isMuted, setIsMuted] = useState(false); 
   const [callHistory, setCallHistory] = useState<{id: string, name: string}[]>([]);
   
+  // 新規追加：フォローリスト用State
+  const [following, setFollowing] = useState<any[]>([]);
+  const [followers, setFollowers] = useState<any[]>([]);
+
   const peerRef = useRef<Peer | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const pendingCallRef = useRef<MediaConnection | null>(null);
+  
+  // 新規追加：通話終了後に誰をフォローするか判定するための保存用
+  const lastActiveCallUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }: any) => {
       if (session) {
         setUser(session.user);
         fetchProfile(session.user.id);
+        fetchFollowData(session.user.id); // フォロー状況の取得
       }
     });
 
@@ -46,7 +54,6 @@ export default function KoetomoApp() {
   // --- 着信バグ修正用フック（画面描画を優先させる） ---
   useEffect(() => {
     if (inCall && pendingCallRef.current && !localStreamRef.current) {
-      // 300ms待機して、確実に通話中画面（青背景）を描画させてからダイアログを出す
       const timer = setTimeout(async () => {
         if (confirm("着信があります。通話しますか？")) {
           try {
@@ -87,6 +94,21 @@ export default function KoetomoApp() {
     }
   };
 
+  // フォロー・フォロワーデータの取得
+  const fetchFollowData = async (userId: string) => {
+    const { data: followingData } = await supabase
+      .from('follows')
+      .select('target_id, profiles!follows_target_id_fkey(id, username, icon, peer_id)')
+      .eq('follower_id', userId);
+    if (followingData) setFollowing(followingData.map(f => f.profiles));
+
+    const { data: followerData } = await supabase
+      .from('follows')
+      .select('follower_id, profiles!follows_follower_id_fkey(id, username, icon, peer_id)')
+      .eq('target_id', userId);
+    if (followerData) setFollowers(followerData.map(f => f.profiles));
+  };
+
   const updateProfile = async () => {
     const { error } = await supabase.from('profiles').update({
       username: profile.username,
@@ -107,10 +129,7 @@ export default function KoetomoApp() {
 
   const initPeer = async (fixedId: string) => {
     const { Peer } = await import('peerjs');
-    
-    if (peerRef.current) {
-      peerRef.current.destroy();
-    }
+    if (peerRef.current) peerRef.current.destroy();
 
     const peer = new (Peer as any)(fixedId, {
       config: {
@@ -124,20 +143,15 @@ export default function KoetomoApp() {
     peerRef.current = peer;
 
     peer.on('open', (id) => console.log("PeerID opened:", id));
-
     peer.on('call', async (call: MediaConnection) => {
-      // 1. まずフラグだけ立てて画面を切り替える
       pendingCallRef.current = call;
       setInCall(true); 
     });
-
     peer.on('error', (err) => {
       console.error("PeerJSエラー:", err);
       setInCall(false);
     });
-
     peer.on('disconnected', () => {
-      console.log("PeerJS切断。再接続します...");
       peer.reconnect();
     });
   };
@@ -145,8 +159,6 @@ export default function KoetomoApp() {
   const setupCallEvents = (call: MediaConnection) => {
     setInCall(true);
     call.on('stream', (remoteStream: MediaStream) => {
-      console.log("音声ストリームを受信:", remoteStream.id);
-      
       const playStream = () => {
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = remoteStream;
@@ -191,10 +203,12 @@ export default function KoetomoApp() {
     else alert("募集を投稿しました！");
   };
 
-  const startCall = async (targetPeerId: string) => {
+  // 相手のUserIdを受け取れるように拡張
+  const startCall = async (targetPeerId: string, targetUserId?: string) => {
     if (!peerRef.current) return;
     setInCall(true); 
     try {
+      if (targetUserId) lastActiveCallUserIdRef.current = targetUserId;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStreamRef.current = stream;
       const call = peerRef.current.call(targetPeerId, stream);
@@ -218,18 +232,33 @@ export default function KoetomoApp() {
     localStreamRef.current?.getTracks().forEach(track => track.stop());
     localStreamRef.current = null;
     
-    if (user) {
-      await supabase.from('posts').delete().eq('user_id', user.id);
-    }
-
     setInCall(false);
     setIsMuted(false);
     pendingCallRef.current = null;
-    window.location.reload();
+
+    // 通話終了後にフォロー確認ダイアログを表示（リロードしないことで動作させる）
+    const targetUserId = lastActiveCallUserIdRef.current;
+    if (targetUserId && targetUserId !== user.id) {
+      setTimeout(() => {
+        if (confirm("通話が終了しました。相手をフォローしますか？")) {
+          handleFollow(targetUserId);
+        }
+        lastActiveCallUserIdRef.current = null;
+      }, 500);
+    }
   };
 
   const handleFollow = async (targetId: string) => {
-    alert(`ID: ${targetId} をフォローしました！`);
+    const { error } = await supabase
+      .from('follows')
+      .insert([{ follower_id: user.id, target_id: targetId }]);
+    
+    if (error) {
+      alert("既にフォロー中か、フォローに失敗しました。");
+    } else {
+      alert("フォローしました！");
+      fetchFollowData(user.id); // フォローリストを更新
+    }
   };
 
   const deletePost = async (postId: string) => {
@@ -240,42 +269,21 @@ export default function KoetomoApp() {
       .eq('id', postId)
       .eq('user_id', user.id); 
 
-    if (error) {
-      alert("削除に失敗しました");
-    } else {
-      fetchPosts(); 
-    }
+    if (error) alert("削除に失敗しました");
+    else fetchPosts(); 
   };
 
+  // --- UI Render ---
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-sky-50 p-6 text-black">
         <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
           <h1 className="text-2xl font-bold mb-6 text-sky-600 text-center">ひまつぶし通話</h1>
-          <input 
-            className="w-full border p-3 mb-3 rounded-lg outline-none focus:border-sky-500" 
-            placeholder="メール" 
-            onChange={e => setEmail(e.target.value)} 
-          />
-          <input 
-            className="w-full border p-3 mb-6 rounded-lg outline-none focus:border-sky-500" 
-            type="password" 
-            placeholder="パスワード" 
-            onChange={e => setPassword(e.target.value)} 
-          />
+          <input className="w-full border p-3 mb-3 rounded-lg outline-none focus:border-sky-500" placeholder="メール" onChange={e => setEmail(e.target.value)} />
+          <input className="w-full border p-3 mb-6 rounded-lg outline-none focus:border-sky-500" type="password" placeholder="パスワード" onChange={e => setPassword(e.target.value)} />
           <div className="flex gap-2">
-            <button 
-              onClick={() => handleAuth('login')} 
-              className="flex-1 bg-sky-600 text-white py-3 rounded-lg font-bold hover:bg-sky-700 transition"
-            >
-              ログイン
-            </button>
-            <button 
-              onClick={() => handleAuth('signup')} 
-              className="flex-1 border border-sky-600 text-sky-600 py-3 rounded-lg font-bold hover:bg-sky-50 transition"
-            >
-              新規登録
-            </button>
+            <button onClick={() => handleAuth('login')} className="flex-1 bg-sky-600 text-white py-3 rounded-lg font-bold hover:bg-sky-700 transition">ログイン</button>
+            <button onClick={() => handleAuth('signup')} className="flex-1 border border-sky-600 text-sky-600 py-3 rounded-lg font-bold hover:bg-sky-50 transition">新規登録</button>
           </div>
         </div>
       </div>
@@ -288,38 +296,48 @@ export default function KoetomoApp() {
         <button onClick={() => setView('home')} className="text-sky-600 mb-6 font-bold flex items-center">← 戻る</button>
         <h1 className="text-2xl font-bold mb-8">マイページ</h1>
         
-        <div className="bg-white p-6 rounded-2xl shadow-md space-y-6">
+        <div className="bg-white p-6 rounded-2xl shadow-md space-y-6 mb-6">
           <div>
             <label className="text-xs text-gray-400 block mb-1">アイコン</label>
-            <select 
-              className="w-full border-b p-2 text-2xl outline-none" 
-              value={profile.icon} 
-              onChange={e => setProfile({...profile, icon: e.target.value})}
-            >
+            <select className="w-full border-b p-2 text-2xl outline-none" value={profile.icon} onChange={e => setProfile({...profile, icon: e.target.value})}>
               <option>👤</option><option>🐶</option><option>🐱</option><option>🐰</option><option>🦊</option>
             </select>
           </div>
           <div>
             <label className="text-xs text-gray-400 block mb-1">ユーザー名</label>
-            <input 
-              className="w-full border-b p-2 outline-none focus:border-sky-500" 
-              value={profile.username} 
-              onChange={e => setProfile({...profile, username: e.target.value})} 
-            />
+            <input className="w-full border-b p-2 outline-none focus:border-sky-500" value={profile.username} onChange={e => setProfile({...profile, username: e.target.value})} />
           </div>
-          <button 
-            onClick={updateProfile} 
-            className="w-full bg-sky-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition"
-          >
-            保存する
-          </button>
+          <button onClick={updateProfile} className="w-full bg-sky-600 text-white py-3 rounded-xl font-bold shadow-lg transition">保存する</button>
         </div>
-        <button 
-          onClick={() => supabase.auth.signOut().then(() => location.reload())} 
-          className="w-full mt-12 text-gray-400 text-sm underline hover:text-gray-600"
-        >
-          ログアウトする
-        </button>
+
+        {/* フォロー・フォロワー数表示 */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-white p-4 rounded-xl shadow-sm text-center">
+            <p className="text-xs text-gray-400">フォロー</p>
+            <p className="text-xl font-bold">{following.length}</p>
+          </div>
+          <div className="bg-white p-4 rounded-xl shadow-sm text-center">
+            <p className="text-xs text-gray-400">フォロワー</p>
+            <p className="text-xl font-bold">{followers.length}</p>
+          </div>
+        </div>
+
+        {/* フォロー一覧 */}
+        <h3 className="font-bold text-sky-900 mb-3 text-sm">フォロー中のユーザー</h3>
+        <div className="space-y-2 mb-8">
+          {following.map(f => (
+            <div key={f.id} className="bg-white p-3 rounded-lg flex justify-between items-center shadow-sm">
+              <div className="flex items-center gap-2">
+                <span>{f.icon}</span>
+                <span className="text-sm font-bold">{f.username}</span>
+              </div>
+              <button onClick={() => startCall(f.peer_id, f.id)} className="bg-green-500 text-white text-xs px-4 py-1 rounded-full font-bold">通話</button>
+            </div>
+          ))}
+          {following.length === 0 && <p className="text-center text-xs text-gray-400 py-4">フォロー中のユーザーはいません</p>}
+        </div>
+
+        <button onClick={() => supabase.auth.signOut().then(() => location.reload())} className="w-full mt-4 text-gray-400 text-sm underline hover:text-gray-600">ログアウトする</button>
       </div>
     );
   }
@@ -327,25 +345,17 @@ export default function KoetomoApp() {
   return (
     <div className="min-h-screen bg-sky-50 p-4 max-w-md mx-auto pb-24 text-black">
       <header className="flex justify-between items-center mb-6">
-        <div 
-          onClick={() => setView('mypage')} 
-          className="flex items-center gap-2 bg-white px-3 py-1 rounded-full shadow-sm cursor-pointer hover:bg-gray-50 transition"
-        >
+        <div onClick={() => setView('mypage')} className="flex items-center gap-2 bg-white px-3 py-1 rounded-full shadow-sm cursor-pointer hover:bg-gray-50 transition">
           <span className="text-xl">{profile.icon}</span>
           <span className="font-bold text-sky-800">{profile.username}</span>
           <span className="text-[10px] text-gray-400">▼</span>
         </div>
-        <h1 className="text-sky-600 font-black">KOETALK</h1>
+        <h1 className="text-sky-600 font-black italic">KOETALK</h1>
       </header>
 
       <section className="bg-white p-4 rounded-xl shadow-md mb-6">
         <p className="text-center text-gray-500 text-xs mb-3">誰かと話したいときは</p>
-        <button 
-          onClick={postCallRequest} 
-          className="w-full bg-sky-500 text-white py-3 rounded-full font-bold shadow-lg hover:bg-sky-600 transition active:scale-95"
-        >
-          通話を募集する
-        </button>
+        <button onClick={postCallRequest} className="w-full bg-sky-500 text-white py-3 rounded-full font-bold shadow-lg hover:bg-sky-600 transition active:scale-95">通話を募集する</button>
       </section>
 
       <h3 className="font-bold text-sky-900 mb-4 flex items-center gap-2">
@@ -357,13 +367,10 @@ export default function KoetomoApp() {
       </h3>
 
       <div className="space-y-3 mb-8">
-        {posts.length === 0 && <p className="text-center text-gray-400 py-10">現在募集はありません</p>}
         {posts.map(post => (
           <div key={post.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-sky-400 flex justify-between items-center transition hover:shadow-md">
             <div className="flex items-center gap-3">
-              <div className="text-2xl bg-sky-50 w-10 h-10 flex items-center justify-center rounded-full">
-                {post.icon || "👤"}
-              </div>
+              <div className="text-2xl bg-sky-50 w-10 h-10 flex items-center justify-center rounded-full">{post.icon || "👤"}</div>
               <div>
                 <p className="font-bold text-slate-800">{post.name}</p>
                 <p className="text-xs text-gray-400">{new Date(post.created_at).toLocaleTimeString()} 投稿</p>
@@ -371,40 +378,25 @@ export default function KoetomoApp() {
             </div>
             <div className="flex gap-2">
               {post.user_id === user.id ? (
-                <button 
-                  onClick={() => deletePost(post.id)}
-                  className="px-4 py-2 text-xs font-bold text-red-500 bg-red-50 rounded-full border border-red-100 hover:bg-red-100 transition active:scale-90"
-                >
-                  削除
-                </button>
+                <button onClick={() => deletePost(post.id)} className="px-4 py-2 text-xs font-bold text-red-500 bg-red-50 rounded-full border border-red-100 hover:bg-red-100">削除</button>
               ) : (
-                <button 
-                  onClick={() => startCall(post.peer_id)} 
-                  disabled={inCall} 
-                  className={`px-5 py-2 rounded-full font-bold text-white transition ${inCall ? 'bg-gray-300' : 'bg-green-500 hover:bg-green-600 shadow-md shadow-green-100'}`}
-                >
-                  通話
-                </button>
+                <button onClick={() => startCall(post.peer_id, post.user_id)} disabled={inCall} className={`px-5 py-2 rounded-full font-bold text-white transition ${inCall ? 'bg-gray-300' : 'bg-green-500 hover:bg-green-600 shadow-md shadow-green-100'}`}>通話</button>
               )}
             </div>
           </div>
         ))}
+        {posts.length === 0 && <p className="text-center text-gray-400 py-10">現在募集はありません</p>}
       </div>
 
-      <h3 className="font-bold text-gray-500 text-sm mb-3">通話履歴（フォロー）</h3>
+      <h3 className="font-bold text-gray-500 text-sm mb-3">履歴（クイックフォロー）</h3>
       <div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar">
-        {callHistory.length === 0 && <p className="text-xs text-gray-400">履歴はありません</p>}
         {callHistory.map((h, i) => (
           <div key={i} className="bg-white p-3 rounded-lg shadow-sm border min-w-[120px] text-center border-slate-100">
             <p className="text-xs font-bold mb-2 truncate text-slate-600">{h.id}</p>
-            <button 
-              onClick={() => handleFollow(h.id)} 
-              className="text-[10px] bg-pink-500 text-white px-3 py-1 rounded-full font-bold hover:bg-pink-600 transition"
-            >
-              ＋フォロー
-            </button>
+            <button onClick={() => handleFollow(h.id)} className="text-[10px] bg-pink-500 text-white px-3 py-1 rounded-full font-bold hover:bg-pink-600 transition">＋フォロー</button>
           </div>
         ))}
+        {callHistory.length === 0 && <p className="text-xs text-gray-400">履歴はありません</p>}
       </div>
 
       {inCall && (
@@ -414,20 +406,11 @@ export default function KoetomoApp() {
           </div>
           <p className="text-2xl font-bold mb-2">通話中...</p>
           <p className="text-sky-200 text-sm mb-12">相手と繋がっています。マイクに向かって話してください。</p>
-          
           <div className="flex gap-4">
-            <button 
-              onClick={toggleMute} 
-              className={`w-16 h-16 rounded-full flex items-center justify-center font-bold text-2xl transition ${isMuted ? 'bg-orange-500 animate-pulse' : 'bg-white/20'}`}
-            >
+            <button onClick={toggleMute} className={`w-16 h-16 rounded-full flex items-center justify-center font-bold text-2xl transition ${isMuted ? 'bg-orange-500 animate-pulse' : 'bg-white/20'}`}>
               {isMuted ? '🔇' : '🎤'}
             </button>
-            <button 
-              onClick={endCall} 
-              className="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-full font-bold text-lg shadow-xl transition-transform active:scale-95"
-            >
-              通話を終了
-            </button>
+            <button onClick={endCall} className="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-full font-bold text-lg shadow-xl transition-transform active:scale-95">通話を終了</button>
           </div>
           {isMuted && <p className="mt-4 text-orange-400 font-bold">現在ミュート中です</p>}
         </div>
