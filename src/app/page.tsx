@@ -65,11 +65,13 @@ useEffect(() => {
     const timer = setTimeout(async () => {
       if (confirm("着信があります。通話しますか？")) {
         try {
+          // 自分のマイクを取得
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           localStreamRef.current = stream;
+          
           setupCallEvents(pendingCallRef.current!); 
           
-          // 重要：answerするときに自分のstreamを渡す！
+          // ★最重要：answer() の引数に stream を渡して、自分の声を相手に送る
           pendingCallRef.current!.answer(stream); 
         } catch (err) {
           alert("マイクの使用を許可してください");
@@ -195,20 +197,25 @@ const setupCallEvents = (call: MediaConnection) => {
     if (remoteAudioRef.current) {
       // 相手の音声をセット
       remoteAudioRef.current.srcObject = remoteStream;
-      // 明示的に再生（ブラウザ対策）
-      remoteAudioRef.current.play().catch(err => {
-        console.error("再生に失敗しました。ユーザーの操作が必要です:", err);
-      });
+      
+      // 自動再生ブロック対策：一度操作があれば再生するようにする
+      const playPromise = remoteAudioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          // ブロックされた場合、画面クリックで再生開始
+          window.addEventListener('click', () => {
+            remoteAudioRef.current?.play();
+          }, { once: true });
+        });
+      }
     }
   });
 
   call.on('close', () => endCall());
-  call.on('error', (err) => {
-    console.error("通話エラー:", err);
-    endCall();
-  });
+  call.on('error', () => endCall()); // エラー時も安全に終了
 
   setCallHistory(prev => {
+    // 通話相手のIDを履歴に追加
     if (prev.find(h => h.id === call.peer)) return prev;
     return [...prev, { id: call.peer, name: "通話した相手" }];
   });
@@ -479,7 +486,13 @@ const endCall = async () => {
         </div>
       )}
 
-      <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
+      <audio 
+  ref={remoteAudioRef} 
+  autoPlay 
+  playsInline 
+  controls 
+  className="fixed bottom-20 left-4 z-[100] h-10 w-64"
+/>
     </div>
   );
 }
